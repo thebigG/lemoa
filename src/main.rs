@@ -47,6 +47,7 @@ pub enum AppState {
     Login,
     Message,
     Inbox,
+    Title
 }
 
 struct App {
@@ -65,6 +66,7 @@ struct App {
     current_posts_type: Option<ListingType>,
     current_posts_page: i64,
     about_dialog: Controller<AboutDialog>,
+    title: String
 }
 
 #[derive(Debug, Clone)]
@@ -85,6 +87,7 @@ pub enum AppMsg {
     OpenCommunities,
     PopBackStack,
     UpdateState(AppState),
+    UpdateTitle,
 }
 
 #[relm4::component]
@@ -96,7 +99,7 @@ impl SimpleComponent for App {
     view! {
         #[root]
         main_window = gtk::ApplicationWindow {
-            set_title: Some("Lemoa"),
+            set_title: Some(&model.title),
             set_default_size: (1400, 800),
 
             #[wrap(Some)]
@@ -219,6 +222,9 @@ impl SimpleComponent for App {
                         inbox_page -> gtk::Box {}
                     }
                 }
+                AppState::Title => {
+                    AppMsg::UpdateTitle
+                }
             }
         }
     }
@@ -290,6 +296,7 @@ impl SimpleComponent for App {
             current_posts_type: None,
             current_posts_page: 1,
             about_dialog,
+            title: "Lemmy".parse().unwrap()
         };
 
         // fetch posts if that's the initial page
@@ -362,6 +369,8 @@ impl SimpleComponent for App {
         match msg {
             AppMsg::ChooseInstance => {
                 self.state = AppState::ChooseInstance;
+                self.title = "New Instance".parse().unwrap();
+                println!("ChooseInstance");
                 self.instances_page
                     .sender()
                     .emit(InstancesPageInput::FetchInstances);
