@@ -8,7 +8,10 @@ use relm4_components::web_image::WebImage;
 
 use crate::{
     api,
-    dialogs::editor::{DialogMsg, EditorData, EditorDialog, EditorOutput, EditorType},
+    dialogs::{
+        editor::{DialogMsg, EditorData, EditorDialog, EditorOutput, EditorType},
+        report_dialog::{ReportDialog, ReportDialogInput},
+    },
     settings,
     util::{self, get_web_image_msg, get_web_image_url, markdown_to_pango_markup},
 };
@@ -26,7 +29,9 @@ pub struct PostPage {
     comments: FactoryVecDeque<CommentRow>,
     #[allow(dead_code)]
     create_comment_dialog: Controller<EditorDialog>,
+    report_post_dialog: Controller<ReportDialog>,
     voting_row: Controller<VotingRowModel>,
+    thumbnail_height: i32,
 }
 
 #[derive(Debug)]
@@ -47,6 +52,7 @@ pub enum PostPageInput {
     DeletePost,
     DoneEditPost(PostView),
     PassAppMessage(crate::AppMsg),
+    ShowReportDialog,
 }
 
 #[relm4::component(pub)]
@@ -65,7 +71,8 @@ impl SimpleComponent for PostPage {
 
                 #[local_ref]
                 image -> gtk::Box {
-                    set_height_request: 400,
+                    #[watch]
+                    set_height_request: model.thumbnail_height,
                     set_margin_bottom: 20,
                     set_margin_top: 20,
                     #[watch]
@@ -187,6 +194,12 @@ impl SimpleComponent for PostPage {
                         #[watch]
                         set_active: model.info.post_view.saved,
                     },
+                    gtk::Button {
+                        set_icon_name: "action-unavailable",
+                        set_margin_start: 10,
+                        connect_clicked => PostPageInput::ShowReportDialog,
+                        set_visible: settings::get_current_account().jwt.is_some(),
+                    },
                 },
 
                 #[local_ref]
@@ -206,7 +219,7 @@ impl SimpleComponent for PostPage {
         let comments = FactoryVecDeque::new(gtk::Box::default(), sender.output_sender());
         let creator_avatar = WebImage::builder().launch("".to_string()).detach();
         let community_avatar = WebImage::builder().launch("".to_string()).detach();
-        let dialog = EditorDialog::builder()
+        let create_comment_dialog = EditorDialog::builder()
             .transient_for(root)
             .launch(EditorType::Comment)
             .forward(sender.input_sender(), |msg| match msg {
@@ -218,14 +231,21 @@ impl SimpleComponent for PostPage {
         let voting_row = VotingRowModel::builder()
             .launch(VotingStats::default())
             .detach();
+        let report_post_dialog = ReportDialog::builder()
+            .transient_for(root)
+            .launch((None, None))
+            .detach();
+
         let model = PostPage {
             info: init,
             image,
             comments,
             creator_avatar,
             community_avatar,
-            create_comment_dialog: dialog,
+            create_comment_dialog,
+            report_post_dialog,
             voting_row,
+            thumbnail_height: 400,
         };
 
         let image = model.image.widget();
@@ -241,6 +261,13 @@ impl SimpleComponent for PostPage {
     fn update(&mut self, message: Self::Input, sender: ComponentSender<Self>) {
         match message {
             PostPageInput::UpdatePost(post) => {
+                match relm4::main_application().active_window() {
+                    Some(window) => {
+                        self.thumbnail_height = window.allocated_width() / 2;
+                    }
+                    None => unreachable!(),
+                }
+
                 self.info = post.clone();
 
                 self.image
@@ -382,6 +409,13 @@ impl SimpleComponent for PostPage {
             }
             PostPageInput::PassAppMessage(message) => {
                 sender.output_sender().emit(message);
+            }
+            PostPageInput::ShowReportDialog => {
+                let message = ReportDialogInput::UpdateId(Some(self.info.post_view.post.id), None);
+                self.report_post_dialog.sender().emit(message);
+                self.report_post_dialog
+                    .sender()
+                    .emit(ReportDialogInput::Show);
             }
         }
     }
